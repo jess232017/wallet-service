@@ -1,5 +1,4 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { TransactionResponseDto } from '../../transactions/dto/transaction-response.dto';
 
 export class WalletResponseDto {
   @ApiProperty({
@@ -20,13 +19,6 @@ export class WalletResponseDto {
     example: 1000.0,
   })
   balance: number;
-
-  @ApiProperty({
-    description: 'The transactions associated with this wallet',
-    type: [TransactionResponseDto],
-    isArray: true,
-  })
-  transactions: TransactionResponseDto[];
 
   @ApiProperty({
     description: 'The timestamp when the wallet was created',

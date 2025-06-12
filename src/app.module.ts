@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { WalletsModule } from './wallets/wallets.module';
 import { TransactionsModule } from './transactions/transactions.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { UnitOfWorkModule } from './common/unit-of-work/unit-of-work.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
         logging: config.get('DB_LOGGING', 'false') === 'true', // enable logging based on environment variable
       }),
     }),
+    UnitOfWorkModule,
     WalletsModule,
     TransactionsModule,
   ],

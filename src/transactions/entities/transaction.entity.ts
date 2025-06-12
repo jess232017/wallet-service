@@ -4,11 +4,14 @@ import {
   PrimaryGeneratedColumn,
   CreateDateColumn,
   UpdateDateColumn,
+  ManyToOne,
+  JoinColumn,
 } from 'typeorm';
+import { Wallet } from '../../wallets/entities/wallet.entity';
 
 export enum TransactionType {
-  DEPOSIT = 'deposit',
-  WITHDRAWAL = 'withdrawal',
+  DEPOSIT = 'DEPOSIT',
+  WITHDRAWAL = 'WITHDRAWAL',
   TRANSFER = 'transfer',
 }
 
@@ -16,9 +19,6 @@ export enum TransactionType {
 export class Transaction {
   @PrimaryGeneratedColumn('uuid')
   id: string;
-
-  @Column()
-  walletId: string;
 
   @Column('decimal', { precision: 10, scale: 2 })
   amount: number;
@@ -28,6 +28,13 @@ export class Transaction {
     enum: TransactionType,
   })
   type: TransactionType;
+
+  @Column()
+  walletId: string;
+
+  @ManyToOne(() => Wallet, (wallet) => wallet.transactions)
+  @JoinColumn({ name: 'walletId' })
+  wallet: Wallet;
 
   @Column({ nullable: true })
   description: string;

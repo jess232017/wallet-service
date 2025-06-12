@@ -15,6 +15,10 @@ export class TypeOrmUnitOfWork implements IUnitOfWork {
     return this.transactionManager;
   }
 
+  getEntityManager(): EntityManager {
+    return this.getTransactionManager();
+  }
+
   async startTransaction(): Promise<void> {
     if (this.transactionManager) {
       throw new Error('Transaction already started');

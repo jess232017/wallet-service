@@ -4,79 +4,103 @@ import {
   BadRequestException,
   Inject,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { Transaction, TransactionType } from './transaction.entity';
+import { Transaction, TransactionType } from './entities/transaction.entity';
 import { TransactionResponseDto } from './dto/transaction-response.dto';
-import {
-  IUnitOfWork,
-  UNIT_OF_WORK,
-} from '../common/interfaces/unit-of-work.interface';
-import { Wallet } from '../wallets/wallet.entity';
+import { CreateTransactionDto } from './dto/create-transaction.dto';
+import { TransactionRepository } from './repositories/transaction.repository';
+import { WalletRepository } from '../wallets/repositories/wallet.repository';
+import { TransactionMapper } from './mappers/transaction.mapper';
+import { UNIT_OF_WORK } from '../common/constants';
+import { IUnitOfWork } from '../common/interfaces/unit-of-work.interface';
 
 @Injectable()
 export class TransactionsService {
   constructor(
-    @InjectRepository(Transaction)
-    private transactionsRepository: Repository<Transaction>,
+    private readonly transactionRepository: TransactionRepository,
+    private readonly walletRepository: WalletRepository,
     @Inject(UNIT_OF_WORK)
-    private readonly unitOfWork: IUnitOfWork,
+    private readonly uow: IUnitOfWork,
   ) {}
 
+  async create(
+    createTransactionDto: CreateTransactionDto,
+  ): Promise<Transaction> {
+    return this.transactionRepository.create(createTransactionDto);
+  }
+
+  async findAll(): Promise<TransactionResponseDto[]> {
+    const transactions = await this.transactionRepository.findAll();
+    return transactions.map((transaction) =>
+      TransactionMapper.toDto(transaction),
+    );
+  }
+
   async findOne(id: string): Promise<TransactionResponseDto> {
-    return this.unitOfWork.executeInTransaction(async (entityManager) => {
-      const transaction = await entityManager.findOne(Transaction, {
-        where: { id },
-        relations: ['wallet'],
-      });
+    const transaction = await this.transactionRepository.findOne(id);
+    if (!transaction) {
+      throw new NotFoundException(`Transaction with ID ${id} not found`);
+    }
+    return TransactionMapper.toDto(transaction);
+  }
 
-      if (!transaction) {
-        throw new NotFoundException(`Transaction with ID ${id} not found`);
-      }
+  async findByWalletId(walletId: string): Promise<TransactionResponseDto[]> {
+    const transactions =
+      await this.transactionRepository.findByWalletId(walletId);
+    return transactions.map((transaction) =>
+      TransactionMapper.toDto(transaction),
+    );
+  }
 
-      return {
-        id: transaction.id,
-        amount: transaction.amount,
-        type: transaction.type,
-        walletId: transaction.wallet.id,
-        createdAt: transaction.createdAt,
-      };
-    });
+  async findOneTransaction(id: string): Promise<TransactionResponseDto> {
+    const transaction = await this.transactionRepository.findOneWithWallet(id);
+
+    if (!transaction) {
+      throw new NotFoundException(`Transaction with ID ${id} not found`);
+    }
+
+    return {
+      id: transaction.id,
+      amount: transaction.amount,
+      type: transaction.type,
+      walletId: transaction.walletId,
+      createdAt: transaction.createdAt,
+    };
   }
 
   async createDeposit(
     walletId: string,
     amount: number,
   ): Promise<TransactionResponseDto> {
-    return this.unitOfWork.executeInTransaction(async (entityManager) => {
-      const wallet = await entityManager.findOne(Wallet, {
-        where: { id: walletId },
-      });
+    return this.uow.executeInTransaction(async (entityManager) => {
+      const wallet = await this.walletRepository.findOne(
+        walletId,
+        entityManager,
+      );
       if (!wallet) {
         throw new NotFoundException(`Wallet with ID ${walletId} not found`);
       }
 
-      // Create transaction record
-      const transaction = entityManager.create(Transaction, {
-        amount,
-        type: TransactionType.DEPOSIT,
-        wallet,
-      });
+      if (amount <= 0) {
+        throw new BadRequestException('Deposit amount must be greater than 0');
+      }
 
-      // Update wallet balance
+      const transaction = await this.transactionRepository.create(
+        {
+          amount,
+          type: TransactionType.DEPOSIT,
+          wallet,
+        },
+        entityManager,
+      );
+
       wallet.balance = Number(wallet.balance) + Number(amount);
+      await this.walletRepository.update(
+        wallet.id,
+        { balance: wallet.balance },
+        entityManager,
+      );
 
-      // Save both in the same transaction
-      await entityManager.save(Transaction, transaction);
-      await entityManager.save(Wallet, wallet);
-
-      return {
-        id: transaction.id,
-        amount: transaction.amount,
-        type: transaction.type,
-        walletId: wallet.id,
-        createdAt: transaction.createdAt,
-      };
+      return TransactionMapper.toDto(transaction);
     });
   }
 
@@ -84,39 +108,42 @@ export class TransactionsService {
     walletId: string,
     amount: number,
   ): Promise<TransactionResponseDto> {
-    return this.unitOfWork.executeInTransaction(async (entityManager) => {
-      const wallet = await entityManager.findOne(Wallet, {
-        where: { id: walletId },
-      });
+    return this.uow.executeInTransaction(async (entityManager) => {
+      const wallet = await this.walletRepository.findOne(
+        walletId,
+        entityManager,
+      );
       if (!wallet) {
         throw new NotFoundException(`Wallet with ID ${walletId} not found`);
       }
 
-      if (Number(wallet.balance) < Number(amount)) {
+      if (amount <= 0) {
+        throw new BadRequestException(
+          'Withdrawal amount must be greater than 0',
+        );
+      }
+
+      if (Number(wallet.balance) < amount) {
         throw new BadRequestException('Insufficient funds');
       }
 
-      // Create transaction record
-      const transaction = entityManager.create(Transaction, {
-        amount,
-        type: TransactionType.WITHDRAWAL,
-        wallet,
-      });
+      const transaction = await this.transactionRepository.create(
+        {
+          amount: -amount,
+          type: TransactionType.WITHDRAWAL,
+          wallet,
+        },
+        entityManager,
+      );
 
-      // Update wallet balance
       wallet.balance = Number(wallet.balance) - Number(amount);
+      await this.walletRepository.update(
+        wallet.id,
+        { balance: wallet.balance },
+        entityManager,
+      );
 
-      // Save both in the same transaction
-      await entityManager.save(Transaction, transaction);
-      await entityManager.save(Wallet, wallet);
-
-      return {
-        id: transaction.id,
-        amount: transaction.amount,
-        type: transaction.type,
-        walletId: wallet.id,
-        createdAt: transaction.createdAt,
-      };
+      return TransactionMapper.toDto(transaction);
     });
   }
 }
