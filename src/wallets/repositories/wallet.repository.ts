@@ -1,8 +1,9 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { Wallet } from '../entities/wallet.entity';
-import { EntityManager } from 'typeorm';
+import { EntityManager, OptimisticLockVersionMismatchError } from 'typeorm';
 import { UNIT_OF_WORK } from '../../common/constants';
 import { IUnitOfWork } from '../../common/interfaces/unit-of-work.interface';
+import { BadRequestException } from '@nestjs/common';
 
 @Injectable()
 export class WalletRepository {
@@ -15,14 +16,23 @@ export class WalletRepository {
     data: Partial<Wallet>,
     entityManager?: EntityManager,
   ): Promise<Wallet> {
-    if (entityManager) {
-      const wallet = entityManager.create(Wallet, data);
-      return entityManager.save(wallet);
+    try {
+      if (entityManager) {
+        const wallet = entityManager.create(Wallet, data);
+        return entityManager.save(wallet);
+      }
+      return this.uow.executeInTransaction(async (em) => {
+        const wallet = em.create(Wallet, data);
+        return em.save(wallet);
+      });
+    } catch (error) {
+      if (error instanceof OptimisticLockVersionMismatchError) {
+        throw new BadRequestException(
+          'Another operation is pending on this wallet',
+        );
+      }
+      throw error;
     }
-    return this.uow.executeInTransaction(async (em) => {
-      const wallet = em.create(Wallet, data);
-      return em.save(wallet);
-    });
   }
 
   async findAll(entityManager?: EntityManager): Promise<Wallet[]> {
@@ -47,12 +57,21 @@ export class WalletRepository {
   }
 
   async update(wallet: Wallet, entityManager?: EntityManager): Promise<Wallet> {
-    if (entityManager) {
-      return entityManager.save(wallet);
+    try {
+      if (entityManager) {
+        return entityManager.save(wallet);
+      }
+      return this.uow.executeInTransaction(async (em) => {
+        return em.save(wallet);
+      });
+    } catch (error) {
+      if (error instanceof OptimisticLockVersionMismatchError) {
+        throw new BadRequestException(
+          'Another operation is pending on this wallet',
+        );
+      }
+      throw error;
     }
-    return this.uow.executeInTransaction(async (em) => {
-      return em.save(wallet);
-    });
   }
 
   async delete(id: string, entityManager?: EntityManager): Promise<void> {

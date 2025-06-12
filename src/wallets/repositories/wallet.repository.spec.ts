@@ -11,6 +11,7 @@ const mockWallet = {
   balance: 1000,
   name: 'Test Wallet',
   transactions: [],
+  version: 1,
   createdAt: new Date(),
   updatedAt: new Date(),
 };

@@ -27,6 +27,7 @@ describe('WalletsService', () => {
     id: '1',
     name: 'Test Wallet',
     balance: 100,
+    version: 1,
     createdAt: new Date(),
     updatedAt: new Date(),
     transactions: [],
