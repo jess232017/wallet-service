@@ -9,6 +9,7 @@ import {
 import { CreateDepositDto } from '../wallets/dto/create-deposit.dto';
 import { CreateWithdrawalDto } from '../wallets/dto/create-withdrawal.dto';
 import { TransactionResponseDto } from './dto/transaction-response.dto';
+import { UUIDValidationPipe } from '../common/pipes/uuid-validation.pipe';
 
 @ApiTags('transactions')
 @ApiBearerAuth()
@@ -24,7 +25,9 @@ export class TransactionsController {
   })
   @ApiResponse({ status: 404, description: 'Transaction not found' })
   @Get(':id')
-  findOne(@Param('id') id: string): Promise<TransactionResponseDto> {
+  findOne(
+    @Param('id', UUIDValidationPipe) id: string,
+  ): Promise<TransactionResponseDto> {
     return this.transactionsService.findOne(id);
   }
 
@@ -38,7 +41,7 @@ export class TransactionsController {
   @ApiResponse({ status: 400, description: 'Invalid deposit amount' })
   @Post('wallet/:walletId/deposit')
   deposit(
-    @Param('walletId') walletId: string,
+    @Param('walletId', UUIDValidationPipe) walletId: string,
     @Body() createDepositDto: CreateDepositDto,
   ): Promise<TransactionResponseDto> {
     return this.transactionsService.createDeposit(
@@ -60,7 +63,7 @@ export class TransactionsController {
   })
   @Post('wallet/:walletId/withdraw')
   withdraw(
-    @Param('walletId') walletId: string,
+    @Param('walletId', UUIDValidationPipe) walletId: string,
     @Body() createWithdrawalDto: CreateWithdrawalDto,
   ): Promise<TransactionResponseDto> {
     return this.transactionsService.createWithdrawal(

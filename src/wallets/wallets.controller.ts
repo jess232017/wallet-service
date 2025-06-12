@@ -9,6 +9,7 @@ import {
 import { CreateWalletDto } from '../transactions/dto/create-wallet.dto';
 import { WalletResponseDto } from './dto/wallet-response.dto';
 import { BalanceResponseDto } from './dto/balance-response.dto';
+import { UUIDValidationPipe } from '../common/pipes/uuid-validation.pipe';
 
 @ApiTags('wallets')
 @ApiBearerAuth()
@@ -47,7 +48,9 @@ export class WalletsController {
   })
   @ApiResponse({ status: 404, description: 'Wallet not found' })
   @Get(':id')
-  findOne(@Param('id') id: string): Promise<WalletResponseDto> {
+  findOne(
+    @Param('id', UUIDValidationPipe) id: string,
+  ): Promise<WalletResponseDto> {
     return this.walletsService.findOne(id);
   }
 
@@ -59,7 +62,9 @@ export class WalletsController {
   })
   @ApiResponse({ status: 404, description: 'Wallet not found' })
   @Get(':id/balance')
-  getBalance(@Param('id') id: string): Promise<BalanceResponseDto> {
+  getBalance(
+    @Param('id', UUIDValidationPipe) id: string,
+  ): Promise<BalanceResponseDto> {
     return this.walletsService.getBalance(id);
   }
 }
