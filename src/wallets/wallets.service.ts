@@ -47,15 +47,20 @@ export class WalletsService {
     id: string,
     updateWalletDto: UpdateWalletDto,
   ): Promise<WalletResponseDto> {
-    await this.walletRepository.update(id, updateWalletDto);
-    return this.findOne(id);
+    const wallet = await this.walletRepository.findOne(id);
+    if (!wallet) {
+      throw new NotFoundException(`Wallet with ID ${id} not found`);
+    }
+    Object.assign(wallet, updateWalletDto);
+    const updatedWallet = await this.walletRepository.update(wallet);
+    return WalletMapper.toDto(updatedWallet);
   }
 
   async remove(id: string): Promise<void> {
+    const wallet = await this.walletRepository.findOne(id);
+    if (!wallet) {
+      throw new NotFoundException(`Wallet with ID ${id} not found`);
+    }
     await this.walletRepository.delete(id);
-  }
-
-  async updateBalance(id: string, amount: number): Promise<void> {
-    await this.walletRepository.updateBalance(id, amount);
   }
 }

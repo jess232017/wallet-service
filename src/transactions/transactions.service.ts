@@ -12,6 +12,7 @@ import { WalletRepository } from '../wallets/repositories/wallet.repository';
 import { TransactionMapper } from './mappers/transaction.mapper';
 import { UNIT_OF_WORK } from '../common/constants';
 import { IUnitOfWork } from '../common/interfaces/unit-of-work.interface';
+import { OptimisticLockVersionMismatchError } from 'typeorm';
 
 @Injectable()
 export class TransactionsService {
@@ -71,79 +72,91 @@ export class TransactionsService {
     walletId: string,
     amount: number,
   ): Promise<TransactionResponseDto> {
-    return this.uow.executeInTransaction(async (entityManager) => {
-      const wallet = await this.walletRepository.findOne(
-        walletId,
-        entityManager,
-      );
-      if (!wallet) {
-        throw new NotFoundException(`Wallet with ID ${walletId} not found`);
+    try {
+      return await this.uow.executeInTransaction(async (entityManager) => {
+        const wallet = await this.walletRepository.findOne(
+          walletId,
+          entityManager,
+        );
+        if (!wallet) {
+          throw new NotFoundException(`Wallet with ID ${walletId} not found`);
+        }
+
+        if (amount <= 0) {
+          throw new BadRequestException(
+            'Deposit amount must be greater than 0',
+          );
+        }
+
+        const transaction = await this.transactionRepository.create(
+          {
+            amount,
+            type: TransactionType.DEPOSIT,
+            wallet,
+          },
+          entityManager,
+        );
+
+        wallet.balance = Number(wallet.balance) + Number(amount);
+        await this.walletRepository.update(wallet, entityManager);
+
+        return TransactionMapper.toDto(transaction);
+      });
+    } catch (error) {
+      if (error instanceof OptimisticLockVersionMismatchError) {
+        throw new BadRequestException(
+          'Another operation is pending on this wallet. Please try again.',
+        );
       }
-
-      if (amount <= 0) {
-        throw new BadRequestException('Deposit amount must be greater than 0');
-      }
-
-      const transaction = await this.transactionRepository.create(
-        {
-          amount,
-          type: TransactionType.DEPOSIT,
-          wallet,
-        },
-        entityManager,
-      );
-
-      wallet.balance = Number(wallet.balance) + Number(amount);
-      await this.walletRepository.update(
-        wallet.id,
-        { balance: wallet.balance },
-        entityManager,
-      );
-
-      return TransactionMapper.toDto(transaction);
-    });
+      throw error;
+    }
   }
 
   async createWithdrawal(
     walletId: string,
     amount: number,
   ): Promise<TransactionResponseDto> {
-    return this.uow.executeInTransaction(async (entityManager) => {
-      const wallet = await this.walletRepository.findOne(
-        walletId,
-        entityManager,
-      );
-      if (!wallet) {
-        throw new NotFoundException(`Wallet with ID ${walletId} not found`);
-      }
+    try {
+      return await this.uow.executeInTransaction(async (entityManager) => {
+        const wallet = await this.walletRepository.findOne(
+          walletId,
+          entityManager,
+        );
+        if (!wallet) {
+          throw new NotFoundException(`Wallet with ID ${walletId} not found`);
+        }
 
-      if (amount <= 0) {
+        if (amount <= 0) {
+          throw new BadRequestException(
+            'Withdrawal amount must be greater than 0',
+          );
+        }
+
+        if (Number(wallet.balance) < amount) {
+          throw new BadRequestException('Insufficient funds');
+        }
+
+        const transaction = await this.transactionRepository.create(
+          {
+            amount: -amount,
+            type: TransactionType.WITHDRAWAL,
+            wallet,
+          },
+          entityManager,
+        );
+
+        wallet.balance = Number(wallet.balance) - Number(amount);
+        await this.walletRepository.update(wallet, entityManager);
+
+        return TransactionMapper.toDto(transaction);
+      });
+    } catch (error) {
+      if (error instanceof OptimisticLockVersionMismatchError) {
         throw new BadRequestException(
-          'Withdrawal amount must be greater than 0',
+          'Another operation is pending on this wallet. Please try again.',
         );
       }
-
-      if (Number(wallet.balance) < amount) {
-        throw new BadRequestException('Insufficient funds');
-      }
-
-      const transaction = await this.transactionRepository.create(
-        {
-          amount: -amount,
-          type: TransactionType.WITHDRAWAL,
-          wallet,
-        },
-        entityManager,
-      );
-
-      wallet.balance = Number(wallet.balance) - Number(amount);
-      await this.walletRepository.update(
-        wallet.id,
-        { balance: wallet.balance },
-        entityManager,
-      );
-
-      return TransactionMapper.toDto(transaction);
-    });
+      throw error;
+    }
   }
 }

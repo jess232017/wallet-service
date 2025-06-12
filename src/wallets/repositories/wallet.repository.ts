@@ -1,15 +1,12 @@
-import { Injectable, Inject, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, EntityManager } from 'typeorm';
+import { Injectable, Inject } from '@nestjs/common';
 import { Wallet } from '../entities/wallet.entity';
+import { EntityManager } from 'typeorm';
 import { UNIT_OF_WORK } from '../../common/constants';
 import { IUnitOfWork } from '../../common/interfaces/unit-of-work.interface';
 
 @Injectable()
 export class WalletRepository {
   constructor(
-    @InjectRepository(Wallet)
-    private readonly repository: Repository<Wallet>,
     @Inject(UNIT_OF_WORK)
     private readonly uow: IUnitOfWork,
   ) {}
@@ -19,54 +16,52 @@ export class WalletRepository {
     entityManager?: EntityManager,
   ): Promise<Wallet> {
     if (entityManager) {
-      return entityManager.save(Wallet, data);
+      const wallet = entityManager.create(Wallet, data);
+      return entityManager.save(wallet);
     }
     return this.uow.executeInTransaction(async (em) => {
-      return em.save(Wallet, data);
+      const wallet = em.create(Wallet, data);
+      return em.save(wallet);
     });
-  }
-
-  async findOne(id: string, entityManager?: EntityManager): Promise<Wallet> {
-    const manager = entityManager || this.uow.getEntityManager();
-    const wallet = await manager.findOne(Wallet, {
-      where: { id },
-    });
-    if (!wallet) {
-      throw new NotFoundException(`Wallet ${id} not found`);
-    }
-    return wallet;
   }
 
   async findAll(entityManager?: EntityManager): Promise<Wallet[]> {
-    const manager = entityManager || this.uow.getEntityManager();
-    return manager.find(Wallet);
+    if (entityManager) {
+      return entityManager.find(Wallet);
+    }
+    return this.uow.executeInTransaction(async (em) => {
+      return em.find(Wallet);
+    });
   }
 
-  async update(
+  async findOne(
     id: string,
-    data: Partial<Wallet>,
     entityManager?: EntityManager,
-  ): Promise<void> {
-    const manager = entityManager || this.uow.getEntityManager();
-    await manager.update(Wallet, id, data);
+  ): Promise<Wallet | null> {
+    if (entityManager) {
+      return entityManager.findOne(Wallet, { where: { id } });
+    }
+    return this.uow.executeInTransaction(async (em) => {
+      return em.findOne(Wallet, { where: { id } });
+    });
+  }
+
+  async update(wallet: Wallet, entityManager?: EntityManager): Promise<Wallet> {
+    if (entityManager) {
+      return entityManager.save(wallet);
+    }
+    return this.uow.executeInTransaction(async (em) => {
+      return em.save(wallet);
+    });
   }
 
   async delete(id: string, entityManager?: EntityManager): Promise<void> {
-    const manager = entityManager || this.uow.getEntityManager();
-    await manager.delete(Wallet, id);
-  }
-
-  async updateBalance(
-    id: string,
-    amount: number,
-    entityManager?: EntityManager,
-  ): Promise<void> {
-    const manager = entityManager || this.uow.getEntityManager();
-    await manager
-      .createQueryBuilder()
-      .update(Wallet)
-      .set({ balance: () => `balance + ${amount}` })
-      .where('id = :id', { id })
-      .execute();
+    if (entityManager) {
+      await entityManager.delete(Wallet, id);
+      return;
+    }
+    await this.uow.executeInTransaction(async (em) => {
+      await em.delete(Wallet, id);
+    });
   }
 }
